@@ -1,4 +1,10 @@
-// Playground - noun: a place where people can play
+//
+//  MenuReader.swift
+//  MenuParser
+//
+//  Created by Tim on 2/23/16.
+//  Copyright © 2016 Tim Chamberlin. All rights reserved.
+//
 
 import UIKit
 
@@ -9,6 +15,7 @@ class MenuReader: NSObject, NSXMLParserDelegate {
     var menuArray:[[[String]]] = []
     var dishExcerpt: [String] = []
     var mealArray = [String]()
+    var meals = [String]()
     
     var cDataString:String = ""
     
@@ -20,19 +27,18 @@ class MenuReader: NSObject, NSXMLParserDelegate {
         parser.parse()
         
         menuArray = makeArray(cDataString)
-        print(menuArray)
-
     }
     
     func makeArray(mealString:String) -> [[[String]]] {
         var mealExcerpt = getStringFromRange(mealString, openTag: "<meal>", closeTag: "</meal>")
-
+        
         for var i=0; i < mealExcerpt.count; i++ {
             var station = [String]()
             var dishes = [String]()
             var stationsArray:[[String]] = []
             
             mealArray = getStringFromRange(mealExcerpt[i], openTag: "<h1>", closeTag: "</h1>")
+            meals.append(mealArray[0])
             stationExcerpt = getStringFromRange(mealExcerpt[i], openTag: "<station>", closeTag: "</station>")
             
             for var j=0; j <= stationExcerpt.count-1; j++ {
@@ -40,10 +46,13 @@ class MenuReader: NSObject, NSXMLParserDelegate {
                 dishExcerpt = getStringFromRange(stationExcerpt[j], openTag: "<ul>", closeTag: "</ul>")
                 dishes = getStringFromRange(dishExcerpt[0], openTag: "<li>", closeTag: "</li>")
                 dishes.insert(station[0], atIndex: 0)
+                // Remove not open to the general public message
+                dishes = dishes.filter {$0 != "[Not open to the general public]"}
                 stationsArray.append(dishes)
             }
             menuArray.append(stationsArray)
         }
+        
         return menuArray
     }
     
@@ -78,13 +87,13 @@ class MenuReader: NSObject, NSXMLParserDelegate {
         //        print(ranges)
         return ranges
     }
-
+    
     
     
     // MARK: XML Parser methods
     
     func parserDidStartDocument(parser: NSXMLParser) {
-//        print("started parsing")
+        //        print("started parsing")
     }
     
     
@@ -114,15 +123,3 @@ class MenuReader: NSObject, NSXMLParserDelegate {
         cDataString = cDataString.stringByReplacingOccurrencesOfString("\u{26}\u{23}039;", withString: "'")
     }
 }
-
-var reader = MenuReader()
-reader.beginParse()
-
-
-
-
-
-
-
-
-
