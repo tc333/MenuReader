@@ -2,124 +2,163 @@
 //  MenuReader.swift
 //  MenuParser
 //
-//  Created by Tim on 2/23/16.
+//  Created by Tim on 10/21/16.
 //  Copyright © 2016 Tim Chamberlin. All rights reserved.
 //
 
 import UIKit
 
-class MenuReader: NSObject, NSXMLParserDelegate {
+class Meal {
+    var name: String = ""
+    var stations: [Station] = []
     
-    var parser = NSXMLParser()
-    var stationExcerpt:[String] = []
-    var menuArray:[[[String]]] = []
-    var dishExcerpt: [String] = []
-    var mealArray = [String]()
-    var meals = [String]()
-    
-    var cDataString:String = ""
-    
-    func beginParse() {
-        let url = NSURL(string: "http://www.bates.edu/dining/menu/feed/todays-menu/")!
-        
-        parser = NSXMLParser(contentsOfURL: url)!
-        parser.delegate = self
-        parser.parse()
-        
-        menuArray = makeArray(cDataString)
-    }
-    
-    func makeArray(mealString:String) -> [[[String]]] {
-        var mealExcerpt = getStringFromRange(mealString, openTag: "<meal>", closeTag: "</meal>")
-        
-        for var i=0; i < mealExcerpt.count; i++ {
-            var station = [String]()
-            var dishes = [String]()
-            var stationsArray:[[String]] = []
-            
-            mealArray = getStringFromRange(mealExcerpt[i], openTag: "<h1>", closeTag: "</h1>")
-            meals.append(mealArray[0])
-            stationExcerpt = getStringFromRange(mealExcerpt[i], openTag: "<station>", closeTag: "</station>")
-            
-            for var j=0; j <= stationExcerpt.count-1; j++ {
-                station = getStringFromRange(stationExcerpt[j], openTag: "<h2>", closeTag: "</h2>")
-                dishExcerpt = getStringFromRange(stationExcerpt[j], openTag: "<ul>", closeTag: "</ul>")
-                dishes = getStringFromRange(dishExcerpt[0], openTag: "<li>", closeTag: "</li>")
-                dishes.insert(station[0], atIndex: 0)
-                // Remove not open to the general public message
-                dishes = dishes.filter {$0 != "[Not open to the general public]"}
-                stationsArray.append(dishes)
-            }
-            menuArray.append(stationsArray)
-        }
-        
-        return menuArray
-    }
-    
-    
-    func getStringFromRange(fromString:NSString, openTag:String, closeTag:String) -> [String] {
-        var array:[String] = []
-        var openTagRanges = getRanges(fromString as String, searchstr: openTag)!
-        var closeTagRanges = getRanges(fromString as String, searchstr: closeTag)!
-        
-        for var i=0; i < openTagRanges.count; i++ {
-            let index:Int = (openTagRanges[i].location + openTagRanges[i].length)
-            let length:Int = (closeTagRanges[i].location - index)
-            let range:NSRange = NSMakeRange(index, length)
-            let result = fromString.substringWithRange(range)
-            array.append(result)
-        }
-        return array
-    }
-    
-    func getRanges(string: String, searchstr: String) -> [NSRange]? {
-        let text = string as String
-        var ranges:[NSRange] = []
-        
-        do {
-            let regex = try NSRegularExpression(pattern: searchstr, options: [])
-            ranges = regex.matchesInString(string, options: [], range: NSMakeRange(0, text.characters.count)).map {$0.range}
-        }
-        catch {
-            // There was a problem creating the regular expression
-            ranges = []
-        }
-        //        print(ranges)
-        return ranges
-    }
-    
-    
-    
-    // MARK: XML Parser methods
-    
-    func parserDidStartDocument(parser: NSXMLParser) {
-        //        print("started parsing")
-    }
-    
-    
-    func parser(parser: NSXMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String]) {
-    }
-    
-    func parser(parser: NSXMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
-    }
-    
-    func parser(parser: NSXMLParser, foundCharacters string: String) {
-        
-    }
-    
-    func parser(parser: NSXMLParser, parseErrorOccurred parseError: NSError) {
-        print("XML parse error")
-    }
-    
-    func parser(parser: NSXMLParser, foundCDATA CDATABlock: NSData) {
-        cDataString = NSString(data: CDATABlock, encoding: NSUTF8StringEncoding) as! String
-        // Line breaks
-        cDataString = cDataString.stringByReplacingOccurrencesOfString("\r", withString: "")
-        // Ampersands
-        cDataString = cDataString.stringByReplacingOccurrencesOfString("\u{26}amp;", withString: "\u{26}")
-        // Single quotes
-        cDataString = cDataString.stringByReplacingOccurrencesOfString("\u{26}quot;", withString: "'")
-        // Apostrophe
-        cDataString = cDataString.stringByReplacingOccurrencesOfString("\u{26}\u{23}039;", withString: "'")
+    init(name: String, stations: [Station]) {
+        self.name = name
+        self.stations = stations
     }
 }
+
+class Station {
+    var name: String = ""
+    var dishes: [Dish] = []
+    
+    init(name: String, dishes: [Dish]) {
+        self.name = name
+        self.dishes = dishes
+    }
+}
+
+class Dish {
+    var name: String = ""
+    
+    init(name: String) {
+        self.name = name
+    }
+}
+
+class MenuReader: NSObject {
+    
+    let menuURL = URL(string: "http://www.bates.edu/dining/menu/feed/todays-menu/")
+    
+    var parser: XMLParser?
+    
+    var meals: [Meal] = []
+    
+    func initializeParser() {
+        guard let menuURL = menuURL else {
+            print("Invalid url: \(String(describing: self.menuURL))")
+            return
+        }
+        parser = XMLParser(contentsOf: menuURL)
+        parser?.delegate = self
+        parser?.parse()
+    }
+    
+    // MARK: - Helper Functions
+    
+    func getHTMLTagValues(tag: String, fromString superString: String) -> [String]? {
+        guard let ranges = getRangesForHTMLTag(tag: tag, inSuperString: superString) else {
+            print("Couldn't find given tag in the superString")
+            return nil
+        }
+        
+        var returnArray = [String]()
+        let beginningTagRanges = ranges.beginningRanges
+        let endingTagRanges = ranges.endingRanges
+        
+        for i in 0..<beginningTagRanges.count {
+            
+            let startingIndex = superString.index(superString.startIndex, offsetBy: beginningTagRanges[i].location + beginningTagRanges[i].length)
+            let endingIndex = superString.index(superString.startIndex, offsetBy: endingTagRanges[i].location)
+            
+            let tagValue: String = superString[startingIndex..<endingIndex]
+            returnArray.append(tagValue)
+        }
+        return returnArray
+    }
+    
+    // Searches a string for the given HTML tag and returns an array of NSRanges that describe the location(s) of the beginning and ending tag within the string
+    func getRangesForHTMLTag(tag: String, inSuperString superString: String) -> (beginningRanges: [NSRange], endingRanges: [NSRange])? {
+        
+        let beginningTag = "<\(tag)>"
+        let endingTag = "</\(tag)>"
+        
+        var beginningRanges: [NSRange] = []
+        var endingRanges: [NSRange] = []
+        
+        
+        do {
+            let beginningRegex = try NSRegularExpression(pattern: beginningTag, options: [])
+            beginningRanges = beginningRegex.matches(in: superString, options: [], range: NSMakeRange(0, superString.characters.count)).map { $0.range }
+            
+            let endingRegex = try NSRegularExpression(pattern: endingTag, options: [])
+            endingRanges = endingRegex.matches(in: superString, options: [], range: NSMakeRange(0, superString.characters.count)).map { $0.range }
+            
+            return (beginningRanges, endingRanges)
+        } catch let error {
+            // There was a problem creating the regular expression
+            print("Regular expression error: \(error.localizedDescription)")
+            return nil
+        }
+    }
+}
+
+extension MenuReader: XMLParserDelegate {
+    func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
+        guard var CDATAString = String(data: CDATABlock, encoding: String.Encoding.utf8) else {
+            print("Cannot convert CDATABlock to string")
+            return
+        }
+        formatCDATAString(cDataString: &CDATAString)
+        parseMenuXMLWithCDATAString(CDATAString: CDATAString)
+    }
+    
+    // MARK: - Helper Functions
+    
+    func parseMenuXMLWithCDATAString(CDATAString: String) {
+        if let mealExcerpts = getHTMLTagValues(tag: "meal", fromString: CDATAString) {
+            for mealExcerpt in mealExcerpts {
+                if let mealNames = getHTMLTagValues(tag: "h1", fromString: mealExcerpt) {
+                    for mealName in mealNames {
+                        let meal = Meal(name: mealName, stations: [])
+                        if let stationExcerpts = getHTMLTagValues(tag: "station", fromString: mealExcerpt) {
+                            for stationExcerpt in stationExcerpts {
+                                if let stationNames = getHTMLTagValues(tag: "h2", fromString: stationExcerpt) {
+                                    for stationName in stationNames {
+                                        let station = Station(name: stationName, dishes: [])
+                                        meal.stations.append(station)
+                                        if let disheNames = getHTMLTagValues(tag: "li", fromString: stationExcerpt) {
+                                            for dishName in disheNames {
+                                                let dish = Dish(name: dishName)
+                                                station.dishes.append(dish)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        self.meals.append(meal)
+                    }
+                }
+            }
+        }
+    }
+    
+    func formatCDATAString(cDataString: inout String) {
+        // Line breaks
+        cDataString = cDataString.replacingOccurrences(of: "\r", with: "")
+        // Ampersands
+        cDataString = cDataString.replacingOccurrences(of: "\u{26}amp;", with: "\u{26}")
+        // Single quotes
+        cDataString = cDataString.replacingOccurrences(of: "\u{26}quot;", with: "'")
+        // Apostrophe
+        cDataString = cDataString.replacingOccurrences(of: "\u{26}\u{23}039;", with: "'")
+    }
+}
+
+
+// Implementation
+
+let menuReader = MenuReader()
+menuReader.initializeParser()
+
